@@ -1,0 +1,498 @@
+<!DOCTYPE HTML>
+<html>
+
+    <head>
+	<meta charset="utf-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+	<meta name="description" content="Front-end developer">
+	<meta name="author" content="Frost">
+	<meta name="generator" content="Hugo 0.42.1" />
+	<title>Redux-Middleware &middot; Forst</title>
+	<!-- Stylesheets -->
+	
+	<link rel="stylesheet" href="https://frostzh.io/css/main.css"/>
+	
+	
+
+	
+
+	<!-- Custom Fonts -->
+	<link href="https://frostzh.io/css/font-awesome.min.css" rel="stylesheet" type="text/css">
+
+	
+	<link rel="shortcut icon" type="image/x-icon" href="https://frostzh.io/favicon.ico">
+	<link rel="icon" type="image/x-icon" href="https://frostzh.io/favicon.ico">
+	
+
+	<!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+	<!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+	<!--[if lt IE 9]>
+	<script src="js/ie/html5shiv.js"></script>
+	<script src="js/ie/html5shiv.jsrespond.min.js"></script>
+	<![endif]-->
+</head>
+    <body>
+
+    <!-- Wrapper -->
+        <div id="wrapper">
+
+            <!-- Header -->
+    <header id="header" class="alt">
+        <a href="https://frostzh.io/" class="logo"><strong></strong> <span>Frost</span></a>
+        <nav>
+            <a href="#menu"></a>
+        </nav>
+    </header>
+
+<!-- Menu -->
+    <nav id="menu">
+        <ul class="links">
+            
+                <li><a href="https://frostzh.io/">Home</a></li>
+            
+                <li><a href="https://frostzh.io/notes">Notes</a></li>
+            
+                <li><a href="https://frostzh.io/essays">Essays</a></li>
+            
+                <li><a href="https://frostzh.io/aboutme.html">About me</a></li>
+            
+
+        </ul>
+        <ul class="actions vertical">
+            
+            
+        </ul>
+    </nav>
+
+        <!-- Main -->
+            <div id="main" class="alt">
+
+                
+                    <section id="one">
+                        <div class="inner">
+                            <header class="major">
+                                <h1>Redux-Middleware</h1>
+                            </header>
+                            
+                                <span class="image main"><img src="/img/notes/relay.jpg" alt="" /></span>
+                            
+                            
+
+<p>redux作为前端广为人知的状态管理库，有着诸多优秀的思想及代码实现值得学习，相关解析网上也是一应俱全。<br />
+本篇从redux Middleware的实现、调用这个角度切入，学习一下redux中优秀的函数式编程实现。</p>
+
+<p>相关基础知识：</p>
+
+<ul>
+<li>ES6箭头函数，剩余运算符，展开运算符等</li>
+<li>Functional programming常规概念</li>
+<li>applymiddleware API使用<br /></li>
+<li>redux源码<br /></li>
+<li>redux 异步派发方案，如redux-thunk,redux-promise等</li>
+<li>redux Middleware源码，本篇以<a href="https://github.com/reduxjs/redux-thunk">redux-thunk</a>举例</li>
+</ul>
+
+<p>来看一看redux源码：
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript">  <span style="color:#8be9fd;font-style:italic">function</span> createStore(reducer, preloadedstate, enhancer){
+      <span style="color:#ff79c6">if</span> (<span style="color:#ff79c6">typeof</span> preloadedState <span style="color:#ff79c6">===</span> <span style="color:#f1fa8c">&#39;function&#39;</span> <span style="color:#ff79c6">&amp;&amp;</span> <span style="color:#ff79c6">typeof</span> enhancer <span style="color:#ff79c6">===</span> <span style="color:#f1fa8c">&#39;undefined&#39;</span>) {
+        enhancer <span style="color:#ff79c6">=</span> preloadedState
+        preloadedState <span style="color:#ff79c6">=</span> <span style="color:#ff79c6">undefined</span>
+      }
+
+    <span style="color:#ff79c6">if</span> (<span style="color:#ff79c6">typeof</span> enhancer <span style="color:#ff79c6">!==</span> <span style="color:#f1fa8c">&#39;undefined&#39;</span>) {
+      <span style="color:#ff79c6">if</span> (<span style="color:#ff79c6">typeof</span> enhancer <span style="color:#ff79c6">!==</span> <span style="color:#f1fa8c">&#39;function&#39;</span>) {
+        <span style="color:#ff79c6">throw</span> <span style="color:#ff79c6">new</span> <span style="color:#8be9fd;font-style:italic">Error</span>(<span style="color:#f1fa8c">&#39;Expected the enhancer to be a function.&#39;</span>)
+      }
+      <span style="color:#6272a4">//局部调用
+</span><span style="color:#6272a4"></span>      <span style="color:#ff79c6">return</span> enhancer(createStore)(reducer, preloadedState)
+    }
+    ...
+  }
+</code></pre></div>
+可以看到初次createStore时，倘若传入了&rdquo;enhancer&rdquo;参数——例如applyMiddleware，redux就会中止当前创建行为。<br />
+并且将createStore函数本身、reducer、preloadedState通过两次局部调用，传入&rdquo;enhancer&rdquo;。</p>
+
+<p>再来看看applyMiddleware做了什么：
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#8be9fd;font-style:italic">function</span> applyMiddleware(...middlewares){
+  <span style="color:#ff79c6">return</span> createStore =&gt; (...args) =&gt; {
+    ...
+  }
+}
+
+<span style="color:#ff79c6">const</span> store<span style="color:#ff79c6">=</span>createStore(reducer, applyMiddle(middleware1, middleware2));
+</code></pre></div>
+很巧妙的柯里化(curry)函数实现，结合applyMiddleware API的使用，可以发现原来在常规使用redux中createStore时，我们就进行了applyMiddleware的第一次局部调用。</p>
+
+<pre><code>什么是局部调用？  
+简单表述就是将一个需要多个参数的函数，变式成一个每次接收一个参数的柯里化函数。
+</code></pre>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#6272a4">//这是一个普通的函数。
+</span><span style="color:#6272a4"></span><span style="color:#8be9fd;font-style:italic">function</span> test(a, b, c, d){
+  <span style="color:#ff79c6">return</span> a <span style="color:#ff79c6">+</span> b <span style="color:#ff79c6">+</span> c <span style="color:#ff79c6">+</span> d;
+}
+
+<span style="color:#6272a4">//这是一个柯里化函数。
+</span><span style="color:#6272a4"></span><span style="color:#8be9fd;font-style:italic">function</span> test(a){
+  <span style="color:#ff79c6">return</span> <span style="color:#8be9fd;font-style:italic">function</span> (b){
+    <span style="color:#ff79c6">return</span> <span style="color:#8be9fd;font-style:italic">function</span> (c){
+      <span style="color:#ff79c6">return</span> <span style="color:#8be9fd;font-style:italic">function</span> (d){
+        <span style="color:#ff79c6">return</span> a <span style="color:#ff79c6">+</span> b <span style="color:#ff79c6">+</span> c <span style="color:#ff79c6">+</span> d;
+      }
+    }
+  }
+}
+
+<span style="color:#ff79c6">const</span> add_B <span style="color:#ff79c6">=</span> test(a);
+<span style="color:#ff79c6">const</span> add_C <span style="color:#ff79c6">=</span> add_B(b);
+<span style="color:#ff79c6">const</span> add_D <span style="color:#ff79c6">=</span> add_C(c);
+
+<span style="color:#ff79c6">const</span> result1 <span style="color:#ff79c6">=</span> add_D(d);
+<span style="color:#ff79c6">const</span> result2 <span style="color:#ff79c6">=</span> test(a)(b)(c)(d);
+
+result1 <span style="color:#ff79c6">===</span> result2; <span style="color:#6272a4">//true
+</span><span style="color:#6272a4"></span>
+<span style="color:#ff79c6">const</span> test <span style="color:#ff79c6">=</span> a =&gt; b =&gt; c =&gt; d =&gt; a <span style="color:#ff79c6">+</span> b <span style="color:#ff79c6">+</span> c <span style="color:#ff79c6">+</span> d;
+</code></pre></div>
+
+<p>看来柯里化函数确实有些妙用，通过每一次的局部调用，来实现函数的“预加载”。通过分批次传入参数，每次都可以得到一个“记住”以前参数的新函数。<br />
+这样可以更加灵活应用函数的同时，还提升了函数的可移植性。</p>
+
+<p>“提升可移植性”在redux中最直观的应用就是由createStore函数中获取createStore本身，而后借助返回新函数来接收开发者传入的reducer、preloadedState。</p>
+
+<p>使用ES2015箭头函数的写法，能让代码更加的优雅。</p>
+
+<p>回到applyMiddleware的思路上来，为什么在初次局部调用接收到所有Middleware后，要在createStore函数中再接收一遍createStore函数呢？</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#8be9fd;font-style:italic">function</span> applyMiddleware(...middlewares){
+  <span style="color:#ff79c6">return</span> createStore =&gt; (...args) =&gt; {
+    ...
+  }
+}
+
+<span style="color:#ff79c6">const</span> store<span style="color:#ff79c6">=</span>createStore(reducer, applyMiddleware(middleware1, middleware2));
+</code></pre></div>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#8be9fd;font-style:italic">function</span> createStore(reducer, preloadedstate, enhancer){
+  <span style="color:#ff79c6">if</span> (<span style="color:#ff79c6">typeof</span> enhancer <span style="color:#ff79c6">!==</span> <span style="color:#f1fa8c">&#39;undefined&#39;</span>) {
+    <span style="color:#ff79c6">if</span> (<span style="color:#ff79c6">typeof</span> enhancer <span style="color:#ff79c6">!==</span> <span style="color:#f1fa8c">&#39;function&#39;</span>) {
+      <span style="color:#ff79c6">throw</span> <span style="color:#ff79c6">new</span> <span style="color:#8be9fd;font-style:italic">Error</span>(<span style="color:#f1fa8c">&#39;Expected the enhancer to be a function.&#39;</span>)
+    }
+    <span style="color:#ff79c6">return</span> enhancer(createStore)(reducer, preloadedState)
+  }
+  ...
+}
+</code></pre></div>
+
+<p>这里需要明确一个主要概念：reudx中的Middleware本质是对&rdquo;dispatch&rdquo;这一行为的改造。</p>
+
+<p>阮一峰<a href="http://www.ruanyifeng.com/blog/2016/09/redux_tutorial_part_two_async_operations.html">Redux 入门教程（二）：中间件与异步操作</a>一文中有一段易于理解的阐述：</p>
+
+<blockquote>
+<p>为了理解中间件，让我们站在框架作者的角度思考问题：如果要添加功能，你会在哪个环节添加？<br />
+1. Reducer：纯函数，只承担计算 State 的功能，不合适承担其他功能，也承担不了，因为理论上，纯函数不能进行读写操作。<br />
+2. View：与 State 一一对应，可以看作 State 的视觉层，也不合适承担其他功能。<br />
+3. Action：存放数据的对象，即消息的载体，只能被别人操作，自己不能进行任何操作。</p>
+</blockquote>
+
+<p>因此dispatch的“传递”本质不能被改变。<br />
+Store该创建还是要创建，Middleware只是对原本Store.dispatch做了封装。<br />
+这样就有了一个思路：Middleware是高阶函数，接收的该是&rdquo;dispatch&rdquo;这一行为，返回的也该是&rdquo;dispatch&rdquo;这一行为。<br />
+如此一来，多个Middleware可以被串联使用，思路上也不会影响最终的&rdquo;dispatch&rdquo;行为。</p>
+
+<p><img src="/img/notes/middleware.png" alt="redux-Middleware" /></p>
+
+<p>而封面所展示的图片，也算是Middleware比较形象的一个比喻。每一个Middleware就像一个运动员，接力棒(action)经由每个Middleware处理后再转交给下一个。<br />
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#6272a4">//redux中对applyMiddleware的两次局部调用。
+</span><span style="color:#6272a4"></span><span style="color:#ff79c6">return</span> enhancer(createStore)(reducer, preloadedState)
+
+<span style="color:#8be9fd;font-style:italic">function</span> applyMiddleware(...middlewares) {
+  <span style="color:#ff79c6">return</span> createStore =&gt; (...args) =&gt; {
+    <span style="color:#6272a4">//args === [reducer,preloadedState]
+</span><span style="color:#6272a4"></span>    <span style="color:#ff79c6">const</span> store <span style="color:#ff79c6">=</span> createStore(...args)
+    <span style="color:#8be9fd;font-style:italic">let</span> dispatch <span style="color:#ff79c6">=</span> () =&gt; {
+      <span style="color:#ff79c6">throw</span> <span style="color:#ff79c6">new</span> <span style="color:#8be9fd;font-style:italic">Error</span>(
+        <span style="color:#f1fa8c">`Dispatching while constructing your middleware is not allowed. `</span> <span style="color:#ff79c6">+</span>
+          <span style="color:#f1fa8c">`Other middleware would not be applied to this dispatch.`</span>
+      )
+    }
+    <span style="color:#6272a4">//伪·store.
+</span><span style="color:#6272a4"></span>    <span style="color:#ff79c6">const</span> middlewareAPI <span style="color:#ff79c6">=</span> {
+      <span style="color:#6272a4">//真·store.getState.
+</span><span style="color:#6272a4"></span>      getState<span style="color:#ff79c6">:</span> store.getState,
+      <span style="color:#6272a4">//伪·dispatch，非store.dispatch.
+</span><span style="color:#6272a4"></span>      dispatch<span style="color:#ff79c6">:</span> (...args) =&gt; dispatch(...args)
+    }
+    <span style="color:#6272a4">//每个Middleware的第一次局部调用，接收“伪·store”。
+</span><span style="color:#6272a4"></span>    <span style="color:#ff79c6">const</span> chain <span style="color:#ff79c6">=</span> middlewares.map(middleware =&gt; middleware(middlewareAPI))
+    dispatch <span style="color:#ff79c6">=</span> compose(...chain)(store.dispatch)
+
+    <span style="color:#ff79c6">return</span> {
+      ...store,
+      dispatch
+    }
+}
+</code></pre></div>
+果然applyMiddleware创建了新的store，并通过redux中对applyMiddleware的两次局部调用，又回到了createStore这一操作上。<br />
+新的createStore没有enhancer参数，一切照常。<br />
+createStore，准备封装store.dispatch，代码解耦一气呵成。看来代码解耦就是柯里化函数一个显而易见的好处。</p>
+
+<pre><code>近期更新的redux对applyMiddleware中所封装的dispatch做了更严谨的判断。  
+为了防止编写Middleware的开发者在Middleware中粗暴调用原store.dispatch从而掉入死循环，新dispatch初始值是一个会抛错的函数。  
+通篇解读完成后“为什么会掉入死循环”这个问题也就迎刃而解，这里埋个伏笔。  
+</code></pre>
+
+<p>继续，applyMiddleware创建了一个命名为&rdquo;middlewareAPI&rdquo;的“伪·store”，通过map传递给所有Middleware这个“伪·store”。<br />
+思路顺到Middleware上。所有符合redux规范的Middleware大体都是这样一个结构：</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascirpt" data-lang="javascirpt">store =&gt; next =&gt; action =&gt; next(action);</code></pre></div>
+
+<p>以<a href="https://github.com/reduxjs/redux-thunk/blob/master/src/index.js">redux-thunk</a>举例，每个Middleware都会接收“真·store.getState”和“伪·dispatch”，便于获取数据(getState)和异步派发(dispatch)使用。<br />
+Middleware完成第一次局部调用后，返回了一个这样结构的函数：</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript">next =&gt; action =&gt; next(action);
+</code></pre></div>
+
+<p>所以&rdquo;chain&rdquo;中是每一个完成初次局部调用的Middleware，随后被解构传入compose：</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#ff79c6">const</span> chain <span style="color:#ff79c6">=</span> middlewares.map(middleware =&gt; middleware(middlewareAPI))
+dispatch <span style="color:#ff79c6">=</span> compose(...chain)(store.dispatch)
+</code></pre></div>
+
+<p>好，接下来<strong>重点</strong>探究一下一直为人称道的compose.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#8be9fd;font-style:italic">function</span> compose(...funcs) {
+  <span style="color:#6272a4">//无Middleware传入。
+</span><span style="color:#6272a4"></span>  <span style="color:#ff79c6">if</span> (funcs.length <span style="color:#ff79c6">===</span> <span style="color:#bd93f9">0</span>) {
+    <span style="color:#ff79c6">return</span> arg =&gt; arg
+  }
+  <span style="color:#6272a4">//一个Middleware.
+</span><span style="color:#6272a4"></span>  <span style="color:#ff79c6">if</span> (funcs.length <span style="color:#ff79c6">===</span> <span style="color:#bd93f9">1</span>) {
+    <span style="color:#ff79c6">return</span> funcs[<span style="color:#bd93f9">0</span>]
+  }
+  <span style="color:#6272a4">//多个Middleware.
+</span><span style="color:#6272a4"></span>  <span style="color:#ff79c6">return</span> funcs.reduce((a, b) =&gt; (...args) =&gt; a(b(...args)))
+}
+</code></pre></div>
+
+<p>可以看到compose做了健全的判断：<br />
+ 1. 无Middleware传入情况下，将第二次局部调用所接收的store.dispatch原样不动赋值给所谓的“伪dispatch”。<br />
+ 2. 单一Middleware情况下，原样不动将Middleware返回。<br />
+ 3. 多个Middleware情况下，利用Array.prototype.reduce对多个Middleware进行了酷炫的拼接操作。</p>
+
+<p><div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#6272a4">//compose拼接的函数——即拼接Middleware
+</span><span style="color:#6272a4"></span>funcs.reduce((a, b) =&gt; (...args) =&gt; a(b(...args)))
+
+<span style="color:#6272a4">//执行过一次——即局部调用过一次的Middleware
+</span><span style="color:#6272a4"></span>next =&gt; action =&gt; next(action);
+
+<span style="color:#8be9fd;font-style:italic">function</span> applyMiddleware(...middlewares){
+  dispatch <span style="color:#ff79c6">=</span> compose(...chain)(store.dispatch)
+  <span style="color:#ff79c6">return</span> {
+    ...store,
+    dispatch
+  }
+}
+</code></pre></div>
+那么结合compose的三种情况，代入初次局部调用完成的Middleware，在applyMiddleware中将全部逻辑串联起来：</p>
+
+<h4 id="无middleware">无Middleware</h4>
+
+<p>“伪·dispath”被赋值store变成“真·dispatch”，store被原本返回，一切如常。</p>
+
+<h4 id="单一middleware">单一Middleware</h4>
+
+<p><div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#6272a4">//compose(...chain) === next =&gt; action =&gt; next(action);
+</span><span style="color:#6272a4"></span>next =&gt; action =&gt; {
+  <span style="color:#6272a4">//next === store.dispatch;
+</span><span style="color:#6272a4"></span>  next(action);
+}
+<span style="color:#6272a4">//这就是改造完成的dispatch.
+</span><span style="color:#6272a4"></span>action =&gt; dispatch(action);
+</code></pre></div>
+原本的Middleware接收store.dispatch为&rdquo;next&rdquo;，即第二个参数。<br />
+返回一个接收&rdquo;action&rdquo;的函数，在这个函数中有&rdquo;store.dispatch(action)&ldquo;这一行为。<br />
+这个“接收&rsquo;action&rsquo;的函数”，就是改造完成的&rdquo;dispatch&rdquo;，&rdquo;action&rdquo;就是开发者派发的原action.</p>
+
+<h4 id="多个middleware">多个Middleware</h4>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#6272a4">//Middleware会被拼接成这种形态
+</span><span style="color:#6272a4"></span>(...args) =&gt; Middleware_1(Middleware_2(Middleware_3(...args)));
+
+compose(...chain) <span style="color:#ff79c6">===</span> (...args) =&gt; Middleware_1(Middleware_2(Middleware_3(...args)));
+
+<span style="color:#6272a4">//伪·dispath，就是改造完成的dispatch.
+</span><span style="color:#6272a4"></span>dispatch <span style="color:#ff79c6">=</span> compose(...chain)(store.dispath);
+
+<span style="color:#6272a4">//Middleware拼接完成后接收store.dispatch，就是这种形态。
+</span><span style="color:#6272a4"></span>Middleware_1(Middleware_2(Middleware_3(store.dispatch)));
+
+<span style="color:#6272a4">//结合每一个执行过一次的Middleware。
+</span><span style="color:#6272a4"></span>next =&gt; action =&gt; next(action);
+Middleware_1(Middleware_2(Middleware_3(store.dispatch)));
+</code></pre></div>
+
+<p>这一小节最后两行代码是一切的聚合点，比较绕。能够将这两行完全串联起来，前面所有的逻辑就全部联动起来了。</p>
+
+<p>可以看到，首先是Middleware_3真正接收到store.dispatch，next(action)这个行为就是store.dispatch(action).<br />
+Middleware_2接收到Middleware_1(store.dispatch)的返回值，变成Middleware_2(action =&gt; store.dispatch(action)).<br />
+Middleware_2中的&rdquo;next&rdquo;就是action =&gt; store.dispatch(action)这样一个函数。<br />
+以此类推，每个Middleware真正的生效顺序是Middleware_3、Middleware_2、Middleware_1。<br />
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#ff79c6">const</span> store <span style="color:#ff79c6">=</span> createStore(reducer, applyMiddleware(Middleware_1, Middleware_2, Middleware_3));
+</code></pre></div></p>
+
+<hr />
+
+<h3 id="归纳">归纳</h3>
+
+<p>前面埋下了一个“为什么在Middleware中直接调用原store.dispatch会掉入死循环？”的伏笔。</p>
+
+<p><img src="/img/notes/洋葱圈儿.jpg" alt="洋葱圈模型" /></p>
+
+<p>redux是flux架构的实现，原则上数据流动是单向的。<br />
+applyMiddleware的最终结果就是覆盖原store.dispatch，不过在applyMiddleware执行诸多Middleware时还是会用到原store.dispatch——毕竟最终还是要将action好好儿的还给store.<br />
+一旦在Middleware中直接调用原store.dispatch，无异于又从外面“来”了一遍。<br />
+结果又到了你调用原store.dispatch的Middleware的操作点，就跳进死循环了。</p>
+
+<p>而且redux的Middleware规范中提到：遵循next =&gt; action =&gt; next(action)这样的结构，且一定要有&rdquo;next(action)&ldquo;这样一个操作。<br />
+经由前面代码分析可知，如果有一个Middleware“捣乱”，data在Middleware中的流动就会“断裂”。<br />
+代码场景大体就会是这样：
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript">action =&gt; {
+  ...
+  <span style="color:#6272a4">/**
+</span><span style="color:#6272a4">  * store:“???”
+</span><span style="color:#6272a4">  * 没有执行‘next(action)’即没有进行真正的dispatch.
+</span><span style="color:#6272a4">  * 但并不一定会引发语法错误，这是显而易见的。
+</span><span style="color:#6272a4">  */</span>
+}
+</code></pre></div>
+这也是很多Middleware会在文档中央求开发者尽可能将自己“放在”最右边，很重要的一个原因是怕上一个Middleware“不讲究”。</p>
+
+<p>还有一个遗漏的点，即redux的异步方案。<br />
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-javascript" data-lang="javascript"><span style="color:#8be9fd;font-style:italic">let</span> dispatch <span style="color:#ff79c6">=</span> () =&gt; {
+  <span style="color:#ff79c6">throw</span> <span style="color:#ff79c6">new</span> <span style="color:#8be9fd;font-style:italic">Error</span>(
+    <span style="color:#f1fa8c">`Dispatching while constructing your middleware is not allowed. `</span> <span style="color:#ff79c6">+</span>
+    <span style="color:#f1fa8c">`Other middleware would not be applied to this dispatch.`</span>
+  )
+}
+<span style="color:#ff79c6">const</span> middlewareAPI <span style="color:#ff79c6">=</span> {
+  getState<span style="color:#ff79c6">:</span> store.getState,
+  dispatch<span style="color:#ff79c6">:</span> (...args) =&gt; dispatch(...args)
+}
+<span style="color:#ff79c6">const</span> chain <span style="color:#ff79c6">=</span> middlewares.map(middleware =&gt; middleware(middlewareAPI))
+<span style="color:#6272a4">//改造完成的dispatch
+</span><span style="color:#6272a4"></span>dispatch <span style="color:#ff79c6">=</span> compose(...chain)(store.dispatch)
+</code></pre></div>
+applyMiddleware中对Middleware的首次局部调用传了个“伪·dispatch”。<br />
+“伪·store”中利用闭包保存了“伪·dispatch”，对就是那个初始值是会抛错的函数。<br />
+当Middleware需要异步派发action时，直接调用原store.dispatch不会出错，但是会忽略掉所有的Middleware.<br />
+所以需要Middleware在进行异步派发时使用被改造完成的dispatch，所以&rdquo;middlewareAPI&rdquo;使用闭包保存“伪·dispatch”。<br />
+届时异步操作执行时会调用到改造完成的dispath.</p>
+
+<p>惊艳~</p>
+
+<hr />
+
+<h3 id="总结">总结</h3>
+
+<p>回过头来再回顾一下，redux applyMiddleware中有着诸多函数式编程思想的明显应用。</p>
+
+<ul>
+<li>curry</li>
+<li>chain</li>
+<li>compose</li>
+<li>pure function(Array.prototype.map, Array.prototype.reduce&hellip;)</li>
+</ul>
+
+<p>柯里化函数的灵活局部调用、chain链的灵活拼接、使用Array.prototype.reduce实现的酷炫compose等等&hellip;<br />
+且代码本身不需过多的注释——函数本身就是良好的注释。<br />
+学习函数式编程相关时，需要解冻一种思维：</p>
+
+<pre><code>函数可以作为参数传给另一个函数，当然也可以返回新的函数，多个函数可以拼接成一个更强大的函数，只需一次调用传递真正值就可以完成诸多操作。
+</code></pre>
+
+<p>而纯函数(pure function)意指不会对原值产生破坏的函数，举个形象的例子就是：</p>
+
+<ul>
+<li>Array.prototype.map</li>
+<li>Array.prototype.splice</li>
+</ul>
+
+<p>map是纯函数，splice总是对原值进行直接操作，是危险函数。<br />
+对于纯函数的一点重要要求，就是相同的输入总能得到相同的输出。</p>
+
+<p>compose操作，很常见的一种形态就是“函数饲养”——将两个或多个函数组合成新的函数。<br />
+applyMiddleware中就是很纯熟的应用。</p>
+
+<hr />
+
+<h3 id="in-the-end">In the end</h3>
+
+<p>笔者近期初学函数式编程相关，的确在很多方面收获了新的东西。<br />
+redux作为业界公认的“艺术品”，真的是每次解读都有不同的收获。作为函数式编程的学习案例，也能有其贴切之处。</p>
+
+<p>文字中使用了一些不严谨、比较“接地气”的表述，如有错误万望指出。<br />
+对于其它相关知识或错误，欢迎指点。</p>
+
+                        </div>
+                    </section>
+            <!-- Disqus Inject -->
+                
+            </div>
+            
+        <!-- Footer -->
+            
+                <!-- Footer -->
+    <footer id="footer">
+        <div class="inner">
+            <ul class="icons">
+                
+                    <li><a href="https://twitter.com/Frost_Zh" class="icon alt fa-twitter" target="_blank"><span class="label">Twitter</span></a></li>
+                
+                    <li><a href="https://github.com/Frost-Zhao" class="icon alt fa-github" target="_blank"><span class="label">GitHub</span></a></li>
+                
+            </ul>
+            <ul class="copyright">
+                <li>&copy; Frost</li>
+                
+                <li>Design:  <a href="https://www.html5up.net">HTML5 UP</a></li>
+                
+            </ul>
+        </div>
+    </footer>
+
+            
+        </div>
+
+    <!-- Scripts -->
+        <!-- Scripts -->
+    <!-- jQuery -->
+    <script src="https://frostzh.io/js/jquery.min.js"></script>
+    <script src="https://frostzh.io/js/jquery.scrolly.min.js"></script>
+    <script src="https://frostzh.io/js/jquery.scrollex.min.js"></script>
+    <script src="https://frostzh.io/js/skel.min.js"></script>
+    <script src="https://frostzh.io/js/util.js"></script>
+
+    
+
+    <!-- Main JS -->
+    <script src="https://frostzh.io/js/main.js"></script>
+
+    
+<script>
+var doNotTrack = false;
+if (!doNotTrack) {
+	window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
+	ga('create', 'Frost', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+<script async src='https://www.google-analytics.com/analytics.js'></script>
+
+
+    
+
+    </body>
+</html>

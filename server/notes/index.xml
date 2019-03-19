@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Notes on Forst</title>
+    <link>https://frostzh.io/notes/</link>
+    <description>Recent content in Notes on Forst</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-Hans</language>
+    <lastBuildDate>Thu, 05 Jul 2018 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="https://frostzh.io/notes/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Hello World</title>
+      <link>https://frostzh.io/notes/hello-world/</link>
+      <pubDate>Thu, 05 Jul 2018 00:00:00 +0000</pubDate>
+      
+      <guid>https://frostzh.io/notes/hello-world/</guid>
+      <description>Hello World.</description>
+    </item>
+    
+    <item>
+      <title>Redux-Middleware</title>
+      <link>https://frostzh.io/notes/redux-middleware/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>https://frostzh.io/notes/redux-middleware/</guid>
+      <description>redux作为前端广为人知的状态管理库，有着诸多优秀的思想及代码实现值得学习，相关解析网上也是一应俱全。
+本篇从redux Middleware的实现、调用这个角度切入，学习一下redux中优秀的函数式编程实现。
+相关基础知识：
+ ES6箭头函数，剩余运算符，展开运算符等 Functional programming常规概念 applymiddleware API使用
+ redux源码
+ redux 异步派发方案，如redux-thunk,redux-promise等 redux Middleware源码，本篇以redux-thunk举例  来看一看redux源码： function createStore(reducer, preloadedstate, enhancer){if (typeof preloadedState === &amp;#39;function&amp;#39; &amp;amp;&amp;amp; typeof enhancer === &amp;#39;undefined&amp;#39;) {enhancer = preloadedStatepreloadedState = undefined}if (typeof enhancer !== &amp;#39;undefined&amp;#39;) {if (typeof enhancer !== &amp;#39;function&amp;#39;) {throw new Error(&amp;#39;Expected the enhancer to be a function.&amp;#39;)}//局部调用 return enhancer(createStore)(reducer, preloadedState)}.</description>
+    </item>
+    
+  </channel>
+</rss>
